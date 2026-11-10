@@ -42,6 +42,7 @@ export default function DesignerCanvas({
   const [isImageUploading, setIsImageUploading] = useState(false)
   const [imageUploadMessage, setImageUploadMessage] = useState('')
   const [imageUploadFailed, setImageUploadFailed] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
 
   // Scale factor: fit within ~600px wide area
   const canvasWidth = 600
@@ -201,15 +202,22 @@ export default function DesignerCanvas({
     fileInputRef.current?.click()
   }
 
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
+  const addImageToCanvas = async (file: File) => {
     setIsImageUploading(true)
     setImageUploadFailed(false)
     setImageUploadMessage(`Adding ${file.name} to the canvas…`)
 
     try {
+      const extension = file.name.split('.').pop()?.toLowerCase()
+      const supportedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+      const supportedExtensions = ['png', 'jpg', 'jpeg', 'webp', 'svg']
+      if (!supportedTypes.includes(file.type) && !supportedExtensions.includes(extension || '')) {
+        throw new Error('Unsupported image type')
+      }
+      if (file.size > 8 * 1024 * 1024) {
+        throw new Error('Image exceeds the 8 MB limit')
+      }
+
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => {
@@ -230,8 +238,8 @@ export default function DesignerCanvas({
 
       img.scale(imgScale)
       img.set({
-        left: bounds.left + 20,
-        top: bounds.top + 20,
+        left: bounds.left + (bounds.width - img.getScaledWidth()) / 2,
+        top: bounds.top + (bounds.height - img.getScaledHeight()) / 2,
       })
 
       const canvas = fabricCanvasRef.current
@@ -240,15 +248,31 @@ export default function DesignerCanvas({
       canvas.add(img)
       canvas.setActiveObject(img)
       canvas.renderAll()
-      setImageUploadMessage(`${file.name} added to the canvas. Drag it to position or resize it.`)
+      setImageUploadMessage(`${file.name} added and centered in the printable area. Drag or resize it to adjust.`)
     } catch (err) {
       console.error('[DesignerCanvas] image upload failed:', err)
       setImageUploadFailed(true)
-      setImageUploadMessage('Could not add that image. Please try a PNG, JPEG, WebP, or SVG file.')
+      setImageUploadMessage(
+        err instanceof Error && err.message.includes('8 MB')
+          ? 'Image is too large. Choose a file smaller than 8 MB.'
+          : 'Could not add that image. Please try a PNG, JPEG, WebP, or SVG file.'
+      )
     } finally {
       setIsImageUploading(false)
-      e.target.value = ''
     }
+  }
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) await addImageToCanvas(file)
+  }
+
+  const handleCanvasDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) await addImageToCanvas(file)
   }
 
   const handleDeleteSelected = () => {
@@ -436,8 +460,23 @@ export default function DesignerCanvas({
         >
           {imageUploadMessage || 'Upload Logo places the image on the canvas. Drag to position it and use the corner handles to resize.'}
         </p>
-        <div className="shadow-lg border border-neutral-300 rounded overflow-hidden bg-white relative">
+        <div
+          className={`relative max-w-full shadow-lg border rounded overflow-hidden bg-white transition-colors ${
+            isDragOver ? 'border-amber-500 ring-4 ring-amber-200' : 'border-neutral-300'
+          }`}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setIsDragOver(true)
+          }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={handleCanvasDrop}
+        >
           <canvas ref={canvasRef} />
+          {isDragOver && (
+            <div className="absolute inset-0 flex items-center justify-center bg-amber-50/90 text-center text-sm font-semibold text-amber-900 pointer-events-none">
+              Drop your artwork to add it to the canvas
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-4 mt-4 text-xs text-neutral-500 font-mono">
           <span className="flex items-center gap-1.5">
@@ -445,7 +484,7 @@ export default function DesignerCanvas({
             Printable Zone ({printArea.width}×{printArea.height}mm)
           </span>
           <span>·</span>
-          <span>Constrained Boundary Enabled</span>
+          <span>Drag artwork here · Keep key details inside the dashed line</span>
         </div>
       </div>
     </div>
