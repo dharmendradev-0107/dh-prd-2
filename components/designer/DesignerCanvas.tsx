@@ -63,7 +63,7 @@ export default function DesignerCanvas({
     async function initCanvas() {
       if (!canvasRef.current) return
 
-      const { Canvas, Rect } = await import('fabric')
+      const { Canvas } = await import('fabric')
       await canvasDisposePromiseRef.current
       if (!isMounted || !canvasRef.current) return
 
@@ -76,27 +76,10 @@ export default function DesignerCanvas({
 
       fabricCanvasRef.current = canvas
 
-      // Printable zone indicator guide (non-selectable)
-      const guideRect = new Rect({
-        left: bounds.left,
-        top: bounds.top,
-        width: bounds.width,
-        height: bounds.height,
-        fill: 'transparent',
-        stroke: '#f59e0b',
-        strokeWidth: 1.5,
-        strokeDashArray: [6, 4],
-        excludeFromExport: true,
-        selectable: false,
-        evented: false,
-        hoverCursor: 'default',
-      })
-      canvas.add(guideRect)
-
       // Object constraint logic: prevent moving/scaling outside print boundary
       canvas.on('object:moving', (e: { target?: FabricObject | null }) => {
         const obj = e.target
-        if (!obj || obj === guideRect) return
+        if (!obj) return
 
         obj.setCoords()
         const objBounds = obj.getBoundingRect()
@@ -117,7 +100,7 @@ export default function DesignerCanvas({
 
       canvas.on('object:scaling', (e: { target?: FabricObject | null }) => {
         const obj = e.target
-        if (!obj || obj === guideRect) return
+        if (!obj) return
 
         obj.setCoords()
         const objectBounds = obj.getBoundingRect()
@@ -289,12 +272,7 @@ export default function DesignerCanvas({
   const handleClearAll = () => {
     const canvas = fabricCanvasRef.current
     if (!canvas) return
-    const objects = canvas.getObjects()
-    // Remove everything except the guide rectangle
-    objects.forEach((obj) => {
-      if (obj.strokeDashArray) return // keep guide
-      canvas.remove(obj)
-    })
+    canvas.getObjects().forEach((obj) => canvas.remove(obj))
     canvas.renderAll()
   }
 
@@ -472,6 +450,17 @@ export default function DesignerCanvas({
           onDrop={handleCanvasDrop}
         >
           <canvas ref={canvasRef} />
+          <div
+            aria-label="Printable safe area"
+            className="pointer-events-none absolute z-10 border-2 border-dashed border-amber-500"
+            style={{
+              left: bounds.left,
+              top: bounds.top,
+              width: bounds.width,
+              height: bounds.height,
+              boxSizing: 'border-box',
+            }}
+          />
           {isDragOver && (
             <div className="absolute inset-0 flex items-center justify-center bg-amber-50/90 text-center text-sm font-semibold text-amber-900 pointer-events-none">
               Drop your artwork to add it to the canvas
