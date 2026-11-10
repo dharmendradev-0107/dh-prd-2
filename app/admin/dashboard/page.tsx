@@ -3,13 +3,21 @@ import { createSupabaseAdminClient } from '@/lib/supabase/server'
 import { isDemoAuthEnabled } from '@/lib/demo-auth'
 import { readDemoStore } from '@/lib/demo-store'
 import Badge from '@/components/ui/Badge'
-import type { Order } from '@/types'
+import type { OrderStatus } from '@/types'
 import { formatINR } from '@/lib/currency'
 
+type DashboardOrder = {
+  id: string
+  status: OrderStatus
+  quantity: number
+  total_price: number
+  created_at: string
+  customer?: { full_name?: string; email?: string } | null
+  product?: { name?: string } | null
+}
+
 export default async function AdminDashboardPage() {
-  let orders: Array<
-    Order & { customer?: { full_name?: string; email?: string } }
-  > = []
+  let orders: DashboardOrder[] = []
   let totalRevenue = 0
   let pendingProofsCount = 0
 
@@ -18,12 +26,15 @@ export default async function AdminDashboardPage() {
     try {
       const { data: orderData } = await adminClient
         .from('orders')
-        .select('*, customer:profiles(*), product:products(*)')
+        .select(
+          'id,status,quantity,total_price,created_at,customer:profiles(full_name,email),product:products(name)'
+        )
         .order('created_at', { ascending: false })
         .limit(10)
+        .returns<DashboardOrder[]>()
 
       if (orderData) {
-        orders = orderData as Array<Order & { customer?: { full_name?: string; email?: string } }>
+        orders = orderData
         totalRevenue = orders.reduce((acc, o) => acc + (Number(o.total_price) || 0), 0)
         pendingProofsCount = orders.filter((o) => o.status === 'proof_sent').length
       }

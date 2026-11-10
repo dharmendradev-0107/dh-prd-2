@@ -4,7 +4,17 @@ import { isDemoAuthEnabled } from '@/lib/demo-auth'
 import { readDemoStore } from '@/lib/demo-store'
 import Badge from '@/components/ui/Badge'
 import { formatINR } from '@/lib/currency'
-import type { Order } from '@/types'
+import type { OrderStatus } from '@/types'
+
+type AdminOrderRow = {
+  id: string
+  status: OrderStatus
+  quantity: number
+  total_price: number
+  created_at: string
+  customer?: { full_name?: string; email?: string } | null
+  product?: { name?: string } | null
+}
 
 interface Props {
   searchParams: Promise<{
@@ -27,25 +37,25 @@ const STAGES = [
 export default async function AdminJobsPage({ searchParams }: Props) {
   const { status, search } = await searchParams
 
-  let orders: Array<
-    Order & { customer?: { email?: string; full_name?: string } }
-  > = []
+  let orders: AdminOrderRow[] = []
 
   if (!isDemoAuthEnabled()) {
     const adminClient = createSupabaseAdminClient()
     try {
       let query = adminClient
         .from('orders')
-        .select('*, customer:profiles(*), product:products(*)')
+        .select(
+          'id,status,quantity,total_price,created_at,customer:profiles(full_name,email),product:products(name)'
+        )
         .order('created_at', { ascending: false })
 
       if (status && status !== 'all') {
         query = query.eq('status', status)
       }
 
-      const { data } = await query
+      const { data } = await query.returns<AdminOrderRow[]>()
       if (data) {
-        orders = data as Array<Order & { customer?: { email?: string; full_name?: string } }>
+        orders = data
         if (search) {
           const s = search.toLowerCase()
           orders = orders.filter(
